@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Japan Inbound Immigration — 1950–2005</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  /*
+   * Revision 3 — changes applied:
+   *
+   * 1. Stacked area → small-multiples (6 faceted line charts, one per region,
+   *    each on its own y-axis — position encoding, not area)
+   * 2. Unified color palette — single PALETTE object used everywhere;
+   *    regions and top-5 countries all have unique, non-overlapping hues
+   * 3. Country chart defaults to top 5 only; others hidden until toggled
+   * 4. Badge labels already removed (no TREND/COMPOSITION labels)
+   * 5. Regional share: top 2 regions (Asia, N. America) get 3px/full opacity;
+   *    rest get 1.5px at 55% opacity for figure/ground separation
+   * 6. Small-multiples grid provides a common baseline per facet —
+   *    each region gets its own aligned y-axis (position on common scale)
+   */
+
+  :root {
+    --bg: #F0EDE6;
+    --bg-card: #FFFFFF;
+    --ink: #1A1A1A;
+    --ink-secondary: #555555;
+    --ink-muted: #999999;
+    --border: #E0DCD5;
+    --grid-line: rgba(0,0,0,0.04);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    max-width: 1280px;
+    margin: 0 auto;
+    padding: 0 32px 48px;
+  }
+
+  header { padding: 48px 0 32px; }
+
+  h1 {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 40px;
+    font-weight: 600;
+    line-height: 1.15;
+  }
+
+  h1 span { color: var(--ink-muted); font-weight: 400; }
+
+  .header-sub {
+    font-size: 14px;
+    color: var(--ink-secondary);
+    margin-top: 6px;
+    font-weight: 300;
+    max-width: 600px;
+  }
+
+  /* ─── KPI ─── */
+  .kpi-strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 48px;
+  }
+
+  .kpi { background: var(--bg-card); padding: 20px 24px; }
+
+  .kpi-label {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--ink-muted);
+    margin-bottom: 4px;
+  }
+
+  .kpi-value {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 32px;
+    font-weight: 700;
+    line-height: 1.15;
+  }
+
+  .kpi-detail { font-size: 12px; color: var(--ink-secondary); margin-top: 2px; }
+
+  /* ─── Sections ─── */
+  .section { margin-bottom: 48px; }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--ink-muted);
+    margin-bottom: 16px;
+    padding-left: 2px;
+  }
+
+  .section-grid { display: grid; gap: 20px; }
+  .section-grid.cols-1 { grid-template-columns: 1fr; }
+  .section-grid.cols-2 { grid-template-columns: 1fr 1fr; }
+
+  /* ─── Cards ─── */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 24px 28px;
+  }
+
+  .card-title {
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 20px;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+
+  .card-subtitle {
+    font-size: 12px;
+    color: var(--ink-muted);
+    margin-bottom: 20px;
+  }
+
+  .chart-wrap { position: relative; width: 100%; height: 320px; }
+  .chart-wrap.tall { height: 400px; }
+  .chart-wrap.short { height: 260px; }
+
+  /* ─── Small-multiples grid for regions ─── */
+  .facet-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+
+  .facet {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 16px 18px;
+  }
+
+  .facet-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+
+  .facet-swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+
+  .facet-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--ink);
+  }
+
+  .facet-peak {
+    font-size: 11px;
+    color: var(--ink-muted);
+    margin-left: auto;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .facet-canvas {
+    position: relative;
+    width: 100%;
+    height: 140px;
+  }
+
+  /* ─── Country toggle buttons ─── */
+  .country-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 16px;
+  }
+
+  .country-btn {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 11px;
+    font-weight: 500;
+    padding: 4px 10px 4px 22px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink-muted);
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .country-btn::before {
+    content: '';
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--dot-color);
+    opacity: 0.3;
+    transition: opacity 0.15s;
+  }
+
+  .country-btn:hover { border-color: var(--ink-muted); }
+
+  .country-btn.active {
+    border-color: var(--ink-secondary);
+    color: var(--ink);
+  }
+
+  .country-btn.active::before { opacity: 1; }
+
+  /* ─── Decade table ─── */
+  .decade-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .decade-table thead th {
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--ink-muted);
+    padding: 0 12px 10px;
+    border-bottom: 2px solid var(--ink);
+  }
+
+  .decade-table thead th:not(:first-child) { text-align: right; }
+
+  .decade-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .decade-table tbody td:first-child { font-weight: 600; }
+  .decade-table tbody td:not(:first-child) { text-align: right; color: var(--ink-secondary); }
+  .decade-table tbody tr:last-child td { border-bottom: none; }
+  .growth-val { font-weight: 600; color: var(--ink); }
+
+  footer {
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--ink-muted);
+  }
+
+  footer a { color: var(--ink-secondary); text-decoration: none; }
+
+  @media (max-width: 1000px) {
+    .facet-grid { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  @media (max-width: 900px) {
+    .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+    .section-grid.cols-2 { grid-template-columns: 1fr; }
+    h1 { font-size: 32px; }
+    .container { padding: 0 20px 32px; }
+  }
+
+  @media (max-width: 540px) {
+    .kpi-strip { grid-template-columns: 1fr; }
+    .facet-grid { grid-template-columns: 1fr; }
+    h1 { font-size: 26px; }
+    .card { padding: 16px; }
+    .chart-wrap { height: 240px; }
+    .chart-wrap.tall { height: 300px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Japan Inbound Visitors <span>1950 – 2005</span></h1>
+    <p class="header-sub">Annual immigration arrivals from post-war recovery through the economic bubble to the dawn of mass tourism.</p>
+  </header>
+
+  <div class="kpi-strip">
+    <div class="kpi">
+      <div class="kpi-label">Peak Year (2005)</div>
+      <div class="kpi-value">7.45M</div>
+      <div class="kpi-detail">Total inbound visitors</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">55-Year Growth</div>
+      <div class="kpi-value">413&times;</div>
+      <div class="kpi-detail">From 18K in 1950</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Largest Source</div>
+      <div class="kpi-value">South Korea</div>
+      <div class="kpi-detail">2.0M visitors in 2005</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Asia Share (2005)</div>
+      <div class="kpi-value">68.9%</div>
+      <div class="kpi-detail">5.1M of 7.45M total</div>
+    </div>
+  </div>
+
+  <!-- ═══ Section 1: Temporal Trends ═══ -->
+  <div class="section">
+    <div class="section-label">Temporal Trends</div>
+    <div class="section-grid cols-1">
+      <div class="card">
+        <div class="card-title">Total Inbound Visitors</div>
+        <div class="card-subtitle">Annual arrivals to Japan, 1950–2005</div>
+        <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+      </div>
+    </div>
+    <div class="section-grid cols-2" style="margin-top:20px">
+      <div class="card">
+        <div class="card-title">Decade Average</div>
+        <div class="card-subtitle">Mean annual visitors per decade</div>
+        <div class="chart-wrap short"><canvas id="decadeChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Decade Summary</div>
+        <div class="card-subtitle">Key metrics by decade</div>
+        <table class="decade-table" id="decadeTable">
+          <thead><tr>
+            <th>Decade</th><th>Avg / Year</th><th>Peak</th><th>Peak Year</th><th>Growth</th>
+          </tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Section 2: Regional Composition ═══ -->
+  <div class="section">
+    <div class="section-label">Regional Composition</div>
+
+    <!-- Small-multiples: one facet per region (replaces stacked area) -->
+    <div class="facet-grid" id="facetGrid"></div>
+
+    <!-- Regional share: position on common scale, figure/ground via line weight -->
+    <div class="section-grid cols-1" style="margin-top:20px">
+      <div class="card">
+        <div class="card-title">Regional Share Over Time</div>
+        <div class="card-subtitle">Percentage of total — top 2 regions emphasised</div>
+        <div class="chart-wrap tall"><canvas id="shareChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Section 3: Country Comparison ═══ -->
+  <div class="section">
+    <div class="section-label">Country Comparison</div>
+    <div class="section-grid cols-1">
+      <div class="card">
+        <div class="card-title">Top Source Countries Over Time</div>
+        <div class="card-subtitle">Top 5 shown by default — toggle others to compare</div>
+        <div class="country-controls" id="countryControls"></div>
+        <div class="chart-wrap tall"><canvas id="countryChart"></canvas></div>
+      </div>
+    </div>
+    <div class="section-grid cols-1" style="margin-top:20px">
+      <div class="card">
+        <div class="card-title">2005 Snapshot</div>
+        <div class="card-subtitle">Visitors by country — position on common scale</div>
+        <div class="chart-wrap tall"><canvas id="snapshotChart"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    Data: Japan Immigration Statistics (Inbound) via Kaggle &middot; Visualization: <a href="https://www.chartjs.org/" target="_blank">Chart.js</a>
+  </footer>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  DATA
+// ══════════════════════════════════════════════════
+
+const years = [1950,1951,1952,1953,1954,1955,1956,1957,1958,1959,1960,1961,1962,1963,1964,1965,1966,1967,1968,1969,1970,1971,1972,1973,1974,1975,1976,1977,1978,1979,1980,1981,1982,1983,1984,1985,1986,1987,1988,1989,1990,1991,1992,1993,1994,1995,1996,1997,1998,1999,2000,2001,2002,2003,2004,2005];
+
+const total = [18046,24268,32262,46857,47425,55638,66356,80361,96514,118020,146881,180048,202181,227289,273551,291309,338584,375929,418522,515116,775061,598061,662474,740738,724017,780298,881203,983069,1017149,1089341,1295866,1552296,1708306,1900597,2036488,2259894,2021450,2161275,2414447,2985764,3504470,3855952,3926347,3747157,3831367,3732450,4244529,4669514,4556845,4901317,5272095,5286310,5771975,5727240,6756830,7450103];
+
+const regions = {
+  asia:          [4135,7049,8503,13343,13317,14533,15320,20385,22979,22129,29629,38483,40453,46761,64955,66347,80923,98377,114141,125351,211684,175393,197847,240074,267881,306773,335974,374615,419201,512108,640637,798658,878175,982688,1057926,1168254,1014787,1136710,1387050,1791652,2164373,2477006,2519046,2389764,2454541,2344748,2684751,2875201,2617778,2978960,3222982,3280514,3674574,3793793,4607027,5134673],
+  europe:        [3606,5483,6068,8902,8135,10305,13413,15147,15560,18206,23181,28546,34660,37890,52683,48169,54682,59526,66733,84842,147449,99072,122383,143292,138320,149832,167846,195586,209812,214055,249806,292385,322991,358264,365207,410735,358365,376164,395843,451968,516450,521864,535275,518625,530447,513915,620480,773515,873891,786763,814912,817035,841667,762511,823210,874247],
+  northAmerica:  [9853,10769,16548,22799,24544,29370,35870,41851,54069,72328,86353,103485,115525,131195,139737,161454,186641,199486,215400,277060,367910,292322,308295,316374,273349,270788,316219,348388,322382,302169,334638,375619,412993,464463,505344,564522,550200,551911,530767,611779,644525,631637,660129,637881,637623,648800,707512,755453,813891,847115,890771,862392,921566,825836,955068,1035301],
+  oceania:       [188,218,217,676,480,579,744,1581,2330,3436,5077,5783,7888,7391,9493,8893,9297,11064,12884,15060,26392,17039,18128,21087,23821,28528,35771,35339,33161,27193,29959,38825,51622,54284,65198,71941,56784,57777,56542,67390,71547,72420,80186,83152,90929,91723,94907,111036,124101,170015,184974,189336,204542,210906,236635,249945],
+  southAmerica:  [102,371,662,745,621,465,633,749,968,1205,1658,2579,2013,2127,3492,3308,4212,4270,5287,7967,13789,8561,9957,12366,12341,15051,16025,18995,21396,23410,27294,29760,23441,18887,20406,25862,26488,25797,31269,48778,92863,137933,117116,102486,102665,117419,120257,134560,105106,97478,135770,114007,103898,109088,109650,125973],
+  africa:        [35,206,121,229,146,220,281,454,458,610,854,991,1468,1690,2905,2468,2616,2848,3672,4338,6751,4862,5054,6561,7024,7801,7613,8350,9381,8505,11394,14607,16050,18211,18106,13709,10771,9675,10038,11653,12095,12867,12721,13445,13221,14332,14067,15495,17183,18402,20643,21289,24001,23682,24129,28782]
+};
+
+const countries = {
+  'South Korea':  [825,1035,1693,3772,3073,1227,1140,2887,3735,2530,5752,7731,7808,10551,18865,17065,25791,33558,39634,44654,71790,77545,85757,110804,124263,129186,141123,156605,184101,199146,212973,250709,284598,283971,292483,296708,299602,360159,515807,806065,978984,1097601,1094724,1069450,1140372,1103566,1224441,1236597,960556,1160034,1286583,1342987,1472096,1621903,1774872,2008418],
+  'Taiwan':       [5,1,2,0,0,0,0,0,0,0,0,0,0,0,12357,15583,17744,20789,25115,27501,46535,38774,47536,50866,60876,77091,82898,88813,99237,165708,235549,305233,311125,331634,351294,356934,300272,360636,392723,501907,610652,686076,745835,700294,681183,614931,756785,857877,874985,963701,944019,838001,909654,816692,1117950,1315594],
+  'China':        [18,9,71,39,26,28,39,31,27,34,78,118,119,195,562,576,503,150,11,16,139,283,994,1991,3161,4441,4018,4039,5951,11622,18336,17550,20532,26606,51010,100972,75275,73030,112389,100144,117814,142150,187681,204302,210476,229965,257393,283467,299573,327005,385296,444441,527796,537700,741659,780924],
+  'United States':[9515,10354,15941,21886,23304,27908,34150,39878,51399,68652,81730,97294,108400,124258,129908,150253,173593,187373,199581,255663,315211,271029,281853,287988,245826,237219,274686,303755,275240,256507,277980,310726,352208,400984,437745,487713,482670,479891,457620,538117,564958,554147,574181,549090,548265,558474,606652,642933,688006,720142,749343,715036,755196,678935,785916,853845],
+  'Philippines':  [536,868,869,1472,1584,2476,2919,3653,3875,4991,5508,7128,7225,7938,9105,8945,10824,12028,14190,13573,20477,12672,10860,7874,10411,12574,13073,16138,20375,23223,27902,37483,37878,47887,49511,65529,80508,85267,86567,88296,108292,125329,120660,109353,126739,105838,106394,124856,129053,144305,169755,186262,197136,209525,236291,221309],
+  'Thailand':     [150,213,451,782,962,1145,1038,1448,1447,1475,1815,2253,2256,2722,3218,3399,4313,5193,5872,6506,10010,6617,6912,7837,8953,11795,14015,15340,14254,14702,17884,23768,31422,43940,45978,44123,30296,33719,41994,49117,69477,105666,97568,72812,63812,57767,68987,67015,54457,64246,73472,77521,86683,95018,121963,136868],
+  'United Kingdom':[1669,2667,2920,3692,3918,4589,6098,5652,5319,6262,7820,9810,11356,12938,15041,15518,17004,18890,20388,24755,36777,29853,35384,41338,39393,45872,53860,61834,64457,71387,89368,120771,151545,174384,167521,183863,142697,144463,149954,172833,212043,105535,107425,110698,123638,131105,145584,170251,186454,188036,198675,203551,225074,206331,222284,229758],
+  'Australia':    [180,209,209,585,461,536,697,1431,2083,2993,4311,4799,6587,6152,7507,7550,7927,9528,11281,13001,21265,14406,15236,17805,20162,24449,31676,31054,28877,22579,23985,29276,37785,38720,47803,53553,40534,39169,40568,49778,53252,52058,57171,59906,63323,61373,66697,79548,93196,137558,150046,152480,167868,175315,197940,210043],
+  'Singapore':    [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,79,1277,1804,2784,3296,5663,4124,5701,8269,7469,9582,10282,11545,11765,12927,18346,25398,31754,41338,43920,42817,33943,35973,35241,38201,43512,43375,41490,39097,41281,41513,51956,62397,59896,68676,74967,70707,78017,78215,91553,96186],
+  'Malaysia':     [1,1,7,0,7,4,7,83,334,354,740,1004,1151,1479,3081,3117,2589,2994,3852,3536,6939,3733,4300,6375,6855,8977,8786,9834,9377,10645,14688,20896,24120,52460,64768,71021,45589,40080,45887,54569,58112,78019,61655,46935,43616,48864,53069,55491,42768,53961,64157,61221,66549,67515,73125,78645],
+  'Indonesia':    [343,698,792,1078,971,1292,1705,1340,1311,1267,1694,2510,2423,2626,4498,4656,3699,4814,4134,4936,8692,6268,6549,8716,9660,11377,13262,15245,14392,12978,17854,24368,27452,31690,37965,47541,31649,24254,21425,26205,32605,34360,33374,31711,31044,31265,36837,43313,25747,33094,39389,42900,44987,51160,50730,56010],
+  'India':        [18,132,231,366,409,533,676,926,1311,2161,2680,3350,3234,2708,3334,3701,3919,4492,5277,5885,15276,7886,6652,7377,7098,7323,8078,8837,11561,11673,13997,16038,17265,18250,20333,24385,20300,20956,21736,21500,20623,20302,21353,22429,22969,25070,28346,33316,34819,36435,39845,41520,45693,45450,52379,58450],
+  'Canada':       [314,330,538,793,1078,1244,1380,1558,2135,2822,3234,4560,4871,4792,6625,8320,9932,9349,11848,15523,42589,15612,18134,20147,19765,23565,29331,34898,34172,34215,40821,44718,48166,53613,53095,61270,55374,58536,58583,60215,64791,63120,70689,73738,75560,77125,87246,96516,109432,109651,122260,128707,134845,129460,146109,154571],
+  'France':       [501,558,590,1049,763,1318,1209,1343,1709,2070,2528,3208,4156,4527,7462,6082,7109,6795,7560,9435,21168,10422,14563,18628,15397,15983,18714,20960,22999,22217,25855,27616,29717,29133,34624,40194,35890,37663,41214,48171,51995,51143,49768,50463,53883,55689,59120,63814,69026,72356,81528,85234,89546,87722,98826,114397],
+  'Germany':      [103,205,320,487,806,942,1554,1711,2049,2218,3184,4140,5178,5813,8283,7599,8528,9023,11639,14763,23734,18686,21632,26215,25843,26101,27856,33938,35743,38458,40532,41723,42066,44532,49773,49604,50480,55271,58273,63185,66827,62337,65101,64102,65755,69939,77717,84456,88089,89355,90605,89895,96070,95691,108773,121261]
+};
+
+// ══════════════════════════════════════════════════════════
+//  UNIFIED COLOR PALETTE
+//
+//  Single source of truth. Every entity gets a unique hue.
+//  Regions and top-5 countries never share a color.
+//
+//  Hue assignments (approx.):
+//    Asia ≈ 358° red        S. Korea ≈ 22° orange
+//    Europe ≈ 212° steel    Taiwan ≈ 268° violet
+//    N. America ≈ 164° teal China ≈ 195° navy
+//    Oceania ≈ 43° amber    U.S. ≈ 140° forest
+//    S. America ≈ 310° plum Philippines ≈ 0° brick
+//    Africa ≈ 85° olive
+// ══════════════════════════════════════════════════════════
+
+const REGION_COLOR = {
+  asia:         '#C53D43',   // vermillion red
+  europe:       '#3B6B9C',   // steel blue
+  northAmerica: '#2A8C6D',   // emerald teal
+  oceania:      '#C49A3C',   // amber
+  southAmerica: '#8B5C83',   // plum mauve
+  africa:       '#6B7C4A',   // olive
+};
+
+const REGION_LABEL = {
+  asia: 'Asia', europe: 'Europe', northAmerica: 'North America',
+  oceania: 'Oceania', southAmerica: 'South America', africa: 'Africa'
+};
+
+const regionOrder = ['asia','europe','northAmerica','oceania','southAmerica','africa'];
+
+// Top 2 regions for emphasis in share chart
+const TOP2_REGIONS = new Set(['asia','northAmerica']);
+
+const COUNTRY_COLOR = {
+  // Top 5 — saturated, unique hues
+  'South Korea':    '#D96B2C',   // burnt orange
+  'Taiwan':         '#6248A8',   // violet
+  'China':          '#1A5276',   // dark navy
+  'United States':  '#2B7A4B',   // forest green
+  'Philippines':    '#B5433A',   // brick red
+
+  // Secondary — desaturated (preattentive: luminance, not hue)
+  'Thailand':       '#B0A090',
+  'United Kingdom': '#9A9A9A',
+  'Australia':      '#B8B0A0',
+  'Singapore':      '#888888',
+  'Malaysia':       '#B0A898',
+  'Indonesia':      '#959585',
+  'India':          '#A8A098',
+  'Canada':         '#929292',
+  'France':         '#A89898',
+  'Germany':        '#98A098',
+};
+
+const TOP5 = new Set(['South Korea','Taiwan','China','United States','Philippines']);
+
+// ══════════════════════════════════════════════════
+//  CHART.JS DEFAULTS
+// ══════════════════════════════════════════════════
+
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+Chart.defaults.font.size = 11;
+Chart.defaults.color = '#999999';
+Chart.defaults.plugins.tooltip.backgroundColor = '#1A1A1A';
+Chart.defaults.plugins.tooltip.titleFont = { weight: '600', size: 12 };
+Chart.defaults.plugins.tooltip.bodyFont = { size: 11 };
+Chart.defaults.plugins.tooltip.padding = 10;
+Chart.defaults.plugins.tooltip.cornerRadius = 3;
+Chart.defaults.plugins.tooltip.displayColors = true;
+Chart.defaults.plugins.tooltip.boxPadding = 3;
+Chart.defaults.plugins.legend.labels.usePointStyle = true;
+Chart.defaults.plugins.legend.labels.pointStyleWidth = 8;
+Chart.defaults.plugins.legend.labels.boxHeight = 8;
+Chart.defaults.plugins.legend.labels.padding = 14;
+Chart.defaults.plugins.legend.labels.font = { size: 11 };
+Chart.defaults.elements.line.tension = 0.3;
+Chart.defaults.elements.point.radius = 0;
+Chart.defaults.elements.point.hoverRadius = 4;
+Chart.defaults.elements.point.hoverBorderWidth = 2;
+Chart.defaults.scale.grid.display = false;
+Chart.defaults.scale.border.display = false;
+
+function fmt(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1) + 'M';
+  if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+  return n.toString();
+}
+
+const LIGHT_GRID = { display: true, color: 'rgba(0,0,0,0.04)', drawTicks: false };
+
+// ══════════════════════════════════════════════════
+//  1. TOTAL TREND
+// ══════════════════════════════════════════════════
+
+new Chart(document.getElementById('trendChart'), {
+  type: 'line',
+  data: {
+    labels: years,
+    datasets: [{
+      label: 'Total Visitors',
+      data: total,
+      borderColor: REGION_COLOR.asia,
+      borderWidth: 2,
+      fill: false,
+      pointHoverBackgroundColor: REGION_COLOR.asia,
+      pointHoverBorderColor: '#fff',
+    }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => `  ${ctx.parsed.y.toLocaleString()} visitors` } }
+    },
+    scales: {
+      x: { ticks: { maxTicksLimit: 12 } },
+      y: { ticks: { callback: v => fmt(v), maxTicksLimit: 5 }, grid: LIGHT_GRID }
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════
+//  2. DECADE BAR
+// ══════════════════════════════════════════════════
+
+const decades = ['1950s','1960s','1970s','1980s','1990s','2000s'];
+const decadeAvgs = decades.map((_, i) => {
+  const s = total.slice(i*10, i*10 + (i===5?6:10));
+  return Math.round(s.reduce((a,b) => a+b, 0) / s.length);
+});
+const decadeGrowth = decadeAvgs.map((v,i) => i===0 ? 0 : (v - decadeAvgs[i-1]) / decadeAvgs[i-1] * 100);
+
+new Chart(document.getElementById('decadeChart'), {
+  type: 'bar',
+  data: {
+    labels: decades,
+    datasets: [{ data: decadeAvgs, backgroundColor: REGION_COLOR.asia, borderRadius: 3, barPercentage: 0.6 }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => `  ${ctx.parsed.y.toLocaleString()} avg/year`,
+          afterLabel: ctx => ctx.dataIndex === 0 ? '' : `  Growth: +${decadeGrowth[ctx.dataIndex].toFixed(0)}% vs prior`
+        }
+      }
+    },
+    scales: {
+      x: {},
+      y: { ticks: { callback: v => fmt(v), maxTicksLimit: 4 }, grid: LIGHT_GRID }
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════
+//  3. DECADE TABLE
+// ══════════════════════════════════════════════════
+
+const tbody = document.querySelector('#decadeTable tbody');
+decades.forEach((label, i) => {
+  const start = i * 10, count = i === 5 ? 6 : 10;
+  const slice = total.slice(start, start + count);
+  const peakVal = Math.max(...slice);
+  const peakYear = years[start + slice.indexOf(peakVal)];
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${label}</td><td>${decadeAvgs[i].toLocaleString()}</td><td>${peakVal.toLocaleString()}</td><td>${peakYear}</td><td>${i === 0 ? '—' : '<span class="growth-val">+' + decadeGrowth[i].toFixed(0) + '%</span>'}</td>`;
+  tbody.appendChild(tr);
+});
+
+// ══════════════════════════════════════════════════
+//  4. REGIONAL SMALL MULTIPLES
+//     (replaces stacked area — position encoding,
+//      each region on its own y-axis / common baseline)
+// ══════════════════════════════════════════════════
+
+const facetGrid = document.getElementById('facetGrid');
+// Only show every 5th year label to keep facets clean
+const sparseLabels = years.map((y, i) => i % 10 === 0 ? y : '');
+
+regionOrder.forEach(key => {
+  const data = regions[key];
+  const color = REGION_COLOR[key];
+  const peak = Math.max(...data);
+  const peakYear = years[data.indexOf(peak)];
+
+  // Create facet DOM
+  const facet = document.createElement('div');
+  facet.className = 'facet';
+  facet.innerHTML = `
+    <div class="facet-header">
+      <div class="facet-swatch" style="background:${color}"></div>
+      <div class="facet-title">${REGION_LABEL[key]}</div>
+      <div class="facet-peak">Peak: ${fmt(peak)} (${peakYear})</div>
+    </div>
+    <div class="facet-canvas"><canvas id="facet-${key}"></canvas></div>
+  `;
+  facetGrid.appendChild(facet);
+
+  // Create chart — own y-axis for each facet
+  new Chart(document.getElementById(`facet-${key}`), {
+    type: 'line',
+    data: {
+      labels: sparseLabels,
+      datasets: [{
+        data: data,
+        borderColor: color,
+        borderWidth: 2,
+        fill: false,
+        pointHoverBackgroundColor: color,
+        pointHoverBorderColor: '#fff',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: items => years[items[0].dataIndex],
+            label: ctx => `  ${REGION_LABEL[key]}: ${ctx.parsed.y.toLocaleString()}`
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: {
+            maxTicksLimit: 6,
+            callback: function(val, idx) {
+              // Show year labels at sensible intervals
+              const year = years[idx];
+              return year && year % 10 === 0 ? year : '';
+            }
+          }
+        },
+        y: {
+          beginAtZero: true,
+          ticks: { callback: v => fmt(v), maxTicksLimit: 3, font: { size: 10 } },
+          grid: LIGHT_GRID,
+        }
+      }
+    }
+  });
+});
+
+// ══════════════════════════════════════════════════
+//  5. REGIONAL SHARE %
+//     Figure/ground: top 2 regions thick + opaque;
+//     rest thin + semi-transparent
+// ══════════════════════════════════════════════════
+
+new Chart(document.getElementById('shareChart'), {
+  type: 'line',
+  data: {
+    labels: years,
+    datasets: regionOrder.map(key => {
+      const emphasised = TOP2_REGIONS.has(key);
+      return {
+        label: REGION_LABEL[key],
+        data: regions[key].map((v, i) => +(v / total[i] * 100).toFixed(1)),
+        borderColor: emphasised ? REGION_COLOR[key] : REGION_COLOR[key] + '70',
+        borderWidth: emphasised ? 3 : 1.5,
+        fill: false,
+        pointHoverBackgroundColor: REGION_COLOR[key],
+        pointHoverBorderColor: '#fff',
+      };
+    })
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: {
+          // Override color in legend to full opacity for readability
+          generateLabels: chart => chart.data.datasets.map((ds, i) => ({
+            text: ds.label,
+            fillStyle: REGION_COLOR[regionOrder[i]],
+            strokeStyle: REGION_COLOR[regionOrder[i]],
+            lineWidth: ds.borderWidth,
+            pointStyle: 'line',
+            hidden: !chart.isDatasetVisible(i),
+            datasetIndex: i,
+          }))
+        }
+      },
+      tooltip: { callbacks: { label: ctx => `  ${ctx.dataset.label}: ${ctx.parsed.y}%` } }
+    },
+    scales: {
+      x: { ticks: { maxTicksLimit: 10 } },
+      y: {
+        ticks: { callback: v => v + '%', maxTicksLimit: 5 },
+        grid: LIGHT_GRID,
+        max: 75,
+      }
+    }
+  }
+});
+
+// ══════════════════════════════════════════════════
+//  6. COUNTRY LINE CHART
+//     Default: only top 5 visible
+// ══════════════════════════════════════════════════
+
+const countryNames = Object.keys(countries);
+const activeCountries = new Set(['South Korea','Taiwan','China','United States','Philippines']);
+const controlsEl = document.getElementById('countryControls');
+
+countryNames.forEach(name => {
+  const btn = document.createElement('button');
+  btn.className = 'country-btn' + (activeCountries.has(name) ? ' active' : '');
+  btn.textContent = name;
+  btn.style.setProperty('--dot-color', COUNTRY_COLOR[name]);
+  btn.addEventListener('click', () => {
+    activeCountries.has(name) ? activeCountries.delete(name) : activeCountries.add(name);
+    btn.classList.toggle('active');
+    updateCountryChart();
+  });
+  controlsEl.appendChild(btn);
+});
+
+const countryChart = new Chart(document.getElementById('countryChart'), {
+  type: 'line',
+  data: { labels: years, datasets: [] },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => `  ${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}` } }
+    },
+    scales: {
+      x: { ticks: { maxTicksLimit: 10 } },
+      y: { ticks: { callback: v => fmt(v), maxTicksLimit: 5 }, grid: LIGHT_GRID }
+    }
+  }
+});
+
+function updateCountryChart() {
+  countryChart.data.datasets = countryNames
+    .filter(n => activeCountries.has(n))
+    .map(n => ({
+      label: n,
+      data: countries[n],
+      borderColor: COUNTRY_COLOR[n],
+      borderWidth: TOP5.has(n) ? 2.5 : 1.5,
+      pointHoverBackgroundColor: COUNTRY_COLOR[n],
+      pointHoverBorderColor: '#fff',
+    }));
+  countryChart.update();
+}
+updateCountryChart();
+
+// ══════════════════════════════════════════════════
+//  7. 2005 SNAPSHOT — horizontal bar
+// ══════════════════════════════════════════════════
+
+const snapshot2005 = countryNames.map(n => ({
+  name: n,
+  value: countries[n][countries[n].length - 1],
+  color: COUNTRY_COLOR[n],
+})).sort((a, b) => b.value - a.value);
+
+new Chart(document.getElementById('snapshotChart'), {
+  type: 'bar',
+  data: {
+    labels: snapshot2005.map(d => d.name),
+    datasets: [{
+      data: snapshot2005.map(d => d.value),
+      backgroundColor: snapshot2005.map(d => TOP5.has(d.name) ? d.color : d.color + 'AA'),
+      borderRadius: 2,
+      barPercentage: 0.7,
+    }]
+  },
+  options: {
+    indexAxis: 'y',
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { callbacks: { label: ctx => `  ${ctx.parsed.x.toLocaleString()} visitors` } }
+    },
+    scales: {
+      x: { ticks: { callback: v => fmt(v), maxTicksLimit: 6 }, grid: LIGHT_GRID },
+      y: {
+        ticks: {
+          font: d => ({ size: 11, weight: TOP5.has(snapshot2005[d.index]?.name) ? '600' : '400' }),
+          color: d => TOP5.has(snapshot2005[d.index]?.name) ? '#1A1A1A' : '#999999',
+        }
+      }
+    }
+  }
+});
+</script>
+</body>
+</html>
